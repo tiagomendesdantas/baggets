@@ -82,12 +82,13 @@ def parse_strategy(spec: str):
         strategy = NoSelection()
     elif name.startswith("none"):
         strategy = NoSelection(int(name[4:]))
-    elif name.startswith("cluster-"):
-        arg = name.split("-", 1)[1]
-        strategy = ClusterSelection(n_clusters="auto" if arg == "auto" else int(arg))
-    elif name.startswith("paper-"):
-        arg = name.split("-", 1)[1]
-        strategy = ClusterSelection.paper(n_clusters="auto" if arg == "auto" else int(arg))
+    elif name.startswith(("cluster-", "paper-")):
+        kind, arg = name.split("-", 1)
+        if arg.startswith("k") and arg[1:].isdigit():  # accept cluster-k5 and cluster-5
+            arg = arg[1:]
+        n_clusters = "auto" if arg == "auto" else int(arg)
+        strategy = (ClusterSelection.paper(n_clusters=n_clusters) if kind == "paper"
+                    else ClusterSelection(n_clusters=n_clusters))
     else:
         raise ValueError(f"unknown strategy spec {spec!r}")
     label = spec if ":" in spec else f"{name}:{agg_name}" if agg_name != "median" else name
