@@ -168,13 +168,13 @@ def cmd_evaluate(args) -> int:
               "run precompute first")
         return 1
 
-    strategies = [parse_strategy(s) for s in args.strategies.split(",")]
+    strategy_specs = args.strategies.split(",")
     eval_seeds = [int(s) for s in args.eval_seeds.split(",")]
 
-    rows = []
-    t0 = time.time()
-    for i, path in enumerate(paths):
+    def _eval_one(path):
+        strategies = [parse_strategy(s) for s in strategy_specs]
         art = load_series_artifacts(path)
+        out = []
         for label, strategy, agg in strategies:
             for seed in eval_seeds:
                 t1 = time.time()
@@ -184,7 +184,7 @@ def cmd_evaluate(args) -> int:
                 else:
                     rng = strategy_rng(seed, art.uid, label)
                     point, info = apply_strategy(art, strategy, args.n_select, agg, rng)
-                rows.append({
+                out.append({
                     "uid": art.uid,
                     "strategy": label,
                     "seed": seed,
@@ -194,8 +194,23 @@ def cmd_evaluate(args) -> int:
                     "k_chosen": info.get("k_chosen"),
                     "ms": 1000 * (time.time() - t1),
                 })
-        if (i + 1) % 100 == 0:
-            print(f"[{i+1}/{len(paths)}] {(time.time()-t0):.0f}s", flush=True)
+        return out
+
+    t0 = time.time()
+    rows = []
+    if args.n_jobs == 1:
+        for i, path in enumerate(paths):
+            rows.extend(_eval_one(path))
+            if (i + 1) % 100 == 0:
+                print(f"[{i+1}/{len(paths)}] {(time.time()-t0):.0f}s", flush=True)
+    else:
+        chunks = Parallel(n_jobs=args.n_jobs, return_as="generator")(
+            delayed(_eval_one)(p) for p in paths
+        )
+        for i, chunk in enumerate(chunks):
+            rows.extend(chunk)
+            if (i + 1) % 100 == 0:
+                print(f"[{i+1}/{len(paths)}] {(time.time()-t0):.0f}s", flush=True)
 
     scores = pd.DataFrame(rows)
     run_id = args.run_id or time.strftime("%Y%m%d_%H%M%S")
@@ -260,6 +275,7 @@ def main() -> int:
     pe.add_argument("--n-select", type=int, default=100)
     pe.add_argument("--eval-seeds", default="1", help="comma list")
     pe.add_argument("--run-id")
+    pe.add_argument("--n-jobs", type=int, default=1)
     pe.set_defaults(fn=cmd_evaluate)
 
     pr = sub.add_parser("report")

@@ -161,12 +161,15 @@ class GreedyCovarianceSelection:
 
     ``aggregator`` should match the deployment aggregator ("median" default).
     ``patience`` stops early after that many consecutive non-improving
-    additions (None = always fill ``n_select``).
+    additions (None = always fill ``n_select``). ``candidate_pool`` restricts
+    the search to the best members by validation error (mirroring the paper's
+    own ~300 prefilter and cutting the per-step cost ~3x); None = full pool.
     """
 
     aggregator: str = "median"
     metric: str = "mape"
     patience: int | None = None
+    candidate_pool: int | None = 300
 
     @property
     def name(self) -> str:
@@ -179,15 +182,18 @@ class GreedyCovarianceSelection:
 
         metric = {"mape": mape, "smape": smape}[self.metric]
         agg = {"median": np.median, "mean": np.mean}[self.aggregator]
-        forecasts = artifacts.val_forecasts
+        pool = np.arange(artifacts.n_members)
+        if self.candidate_pool is not None and self.candidate_pool < pool.size:
+            pool = np.sort(_rank_by_error(artifacts.val_errors)[: self.candidate_pool])
+        forecasts = artifacts.val_forecasts[pool]
+        errors = artifacts.val_errors[pool]
         actuals = artifacts.val_actuals
-        n_members = artifacts.n_members
-        n_select = min(n_select, n_members)
+        n_select = min(n_select, pool.size)
 
-        chosen = [int(np.argmin(artifacts.val_errors))]
-        best_obj = float(artifacts.val_errors[chosen[0]])
+        chosen = [int(np.argmin(errors))]
+        best_obj = float(errors[chosen[0]])
         stall = 0
-        available = np.ones(n_members, dtype=bool)
+        available = np.ones(pool.size, dtype=bool)
         available[chosen[0]] = False
 
         while len(chosen) < n_select and available.any():
@@ -213,7 +219,7 @@ class GreedyCovarianceSelection:
             pick = int(cand_idx[best])
             chosen.append(pick)
             available[pick] = False
-        return np.sort(np.asarray(chosen, dtype=np.int64))
+        return np.sort(pool[np.asarray(chosen, dtype=np.int64)])
 
 
 @dataclass(frozen=True)
@@ -225,8 +231,12 @@ class PortfolioSelection:
     Ledoit-Wolf-shrunk covariance (h_val samples for B members: shrinkage is
     doing heavy lifting — documented caveat). The objective for subset S with
     equal weights is ``(mean b_S)^2 + (1/|S|^2) * sum(Sigma_S)``; each greedy
-    step is O(B) via running sums.
+    step is O(B) via running sums. ``candidate_pool`` restricts to the best
+    members by validation error before estimating the covariance (a 300x300
+    matrix instead of 1000x1000); None = full pool.
     """
+
+    candidate_pool: int | None = 300
 
     @property
     def name(self) -> str:
@@ -237,12 +247,15 @@ class PortfolioSelection:
     ) -> np.ndarray:
         from sklearn.covariance import LedoitWolf
 
-        errors = artifacts.val_forecasts - artifacts.val_actuals[None, :]  # (B, h)
+        pool = np.arange(artifacts.n_members)
+        if self.candidate_pool is not None and self.candidate_pool < pool.size:
+            pool = np.sort(_rank_by_error(artifacts.val_errors)[: self.candidate_pool])
+        errors = artifacts.val_forecasts[pool] - artifacts.val_actuals[None, :]
         bias = errors.mean(axis=1)
         # samples = validation horizons, features = members
         cov = LedoitWolf(assume_centered=False).fit(errors.T).covariance_
 
-        n_members = artifacts.n_members
+        n_members = pool.size
         n_select = min(n_select, n_members)
 
         obj_single = bias**2 + np.diag(cov)
@@ -266,7 +279,7 @@ class PortfolioSelection:
             sum_bias += bias[pick]
             sum_cov += 2 * cross[pick] + cov[pick, pick]
             cross += cov[pick]
-        return np.sort(np.asarray(chosen, dtype=np.int64))
+        return np.sort(pool[np.asarray(chosen, dtype=np.int64)])
 
 
 @dataclass(frozen=True)
