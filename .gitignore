@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
+
+# Project data & results (large, regenerable)
+data/
+results/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.numba_cache/
+
+# OS
+.DS_Store
+
+# Local-only: assistant/workflow files
+CLAUDE.md
+.claude/
+tasks/
+
+# Local-only: published-version PDF (publisher copyright)
+IJF_published_Dantas_Cyrino_Oliveira.pdf

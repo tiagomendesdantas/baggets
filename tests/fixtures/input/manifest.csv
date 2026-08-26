@@ -1,0 +1,13 @@
+sid,m,h,n_train
+monthly_N1603,12,18,51
+monthly_N1861,12,18,108
+monthly_N1908,12,18,126
+monthly_N2244,12,18,116
+monthly_N2479,12,18,48
+monthly_N2501,12,18,102
+monthly_N2572,12,18,116
+monthly_N2603,12,18,126
+quarterly_N0936,4,8,16
+quarterly_N1359,4,8,64
+synthetic_ar1,12,18,120
+yearly_N0001,1,6,14

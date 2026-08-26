@@ -1,0 +1,74 @@
+{
+  "monthly_N1603": {
+    "h": 18,
+    "m": 12,
+    "n_train": 51,
+    "source": "M3 monthly N1603 (training part)"
+  },
+  "monthly_N1861": {
+    "h": 18,
+    "m": 12,
+    "n_train": 108,
+    "source": "M3 monthly N1861 (training part)"
+  },
+  "monthly_N1908": {
+    "h": 18,
+    "m": 12,
+    "n_train": 126,
+    "source": "M3 monthly N1908 (training part)"
+  },
+  "monthly_N2244": {
+    "h": 18,
+    "m": 12,
+    "n_train": 116,
+    "source": "M3 monthly N2244 (training part)"
+  },
+  "monthly_N2479": {
+    "h": 18,
+    "m": 12,
+    "n_train": 48,
+    "source": "M3 monthly N2479 (training part)"
+  },
+  "monthly_N2501": {
+    "h": 18,
+    "m": 12,
+    "n_train": 102,
+    "source": "M3 monthly N2501 (training part)"
+  },
+  "monthly_N2572": {
+    "h": 18,
+    "m": 12,
+    "n_train": 116,
+    "source": "M3 monthly N2572 (training part)"
+  },
+  "monthly_N2603": {
+    "h": 18,
+    "m": 12,
+    "n_train": 126,
+    "source": "M3 monthly N2603 (training part)"
+  },
+  "quarterly_N0936": {
+    "h": 8,
+    "m": 4,
+    "n_train": 16,
+    "source": "M3 quarterly N0936 (training part)"
+  },
+  "quarterly_N1359": {
+    "h": 8,
+    "m": 4,
+    "n_train": 64,
+    "source": "M3 quarterly N1359 (training part)"
+  },
+  "synthetic_ar1": {
+    "h": 18,
+    "m": 12,
+    "n_train": 120,
+    "source": "synthetic trend+seasonal+AR(1), seed 20180748"
+  },
+  "yearly_N0001": {
+    "h": 6,
+    "m": 1,
+    "n_train": 14,
+    "source": "M3 yearly N0001 (training part)"
+  }
+}
