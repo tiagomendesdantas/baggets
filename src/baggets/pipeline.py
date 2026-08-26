@@ -11,6 +11,7 @@ array slicing: a full-M3 strategy sweep reruns in seconds with zero refits.
 from __future__ import annotations
 
 import json
+import os
 import zlib
 from dataclasses import dataclass
 from pathlib import Path
@@ -113,8 +114,11 @@ def precompute_series(
         "n_final_fallbacks": int(n_final_fallbacks),
     }
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    # atomic write: a kill mid-save must not leave a truncated file that the
+    # resume logic would treat as a finished series
+    tmp_path = out_path.with_name(out_path.name + ".tmp")
     np.savez_compressed(
-        out_path,
+        tmp_path,
         series=boot.series.astype(np.float32),
         val_forecasts=val_forecasts.astype(np.float32),
         val_errors=val_errors.astype(np.float32),
@@ -123,6 +127,9 @@ def precompute_series(
         y_test=rec.y_test.astype(np.float32),
         meta=np.frombuffer(json.dumps(meta).encode(), dtype=np.uint8),
     )
+    # np.savez appends .npz to names lacking it
+    saved_tmp = tmp_path if tmp_path.exists() else tmp_path.with_name(tmp_path.name + ".npz")
+    os.replace(saved_tmp, out_path)
     return meta
 
 
