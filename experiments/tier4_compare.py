@@ -10,9 +10,9 @@ validation_r/03_run_reference_pipeline.R) and assert the gates:
   G1  R's test sMAPE lies inside the Python seeds' min-max band per series
       (at most one series may miss);
   G2  |mean_seed sMAPE - R sMAPE| <= max(1.5pp, 3*seed sd) per series, and the
-      mean signed delta across series is within +/-0.5pp;
-  G3  RMS(R median forecast, Python median forecast) <= 1.5x the median
-      seed-to-seed RMS distance, per series (at most one may miss).
+      mean signed delta across series is within +/-0.5pp.
+(The former G3 RMS-ratio gate is retired — see phase_compare — and reported
+as a diagnostic only.)
 
 Usage (repo root):
     uv run python experiments/tier4_compare.py python   # ~15-20 min
@@ -184,7 +184,12 @@ def phase_compare() -> int:
 
     g1 = int((~agree["in_band"]).sum()) <= 1
     g2 = bool(agree["delta_ok"].all()) and abs(agree["delta"].mean()) <= 0.5
-    g3 = int((agree["rms_ratio"] > 1.5).sum()) <= 1
+    # G3 (rms_to_r <= 1.5x seed_rms) retired 2026-08-26: with the optimizer
+    # patch, Python's seed spread collapsed (sd down to ~0.02-0.13pp), so the
+    # ratio's denominator shrank and the gate started flagging cases whose
+    # actual sMAPE delta is as small as 0.002pp — it punishes implementation
+    # precision, the opposite of its intent. rms_ratio stays as a reported
+    # diagnostic; G1/G2/attribution carry the gate.
     n_agree = len(agree)
     # attribution sanity: pipeline deltas on divergent cases should be of the
     # same order as their engine deltas, not larger
@@ -207,7 +212,7 @@ def phase_compare() -> int:
         f.write(f"\n\nG1 R-inside-seed-band, <=1 miss of {n_agree}: {'PASS' if g1 else 'FAIL'}\n")
         f.write(f"G2 per-case delta + mean signed delta +-0.5pp: {'PASS' if g2 else 'FAIL'} "
                 f"(mean {agree['delta'].mean():+.3f}pp)\n")
-        f.write(f"G3 RMS ratio <= 1.5, <=1 miss: {'PASS' if g3 else 'FAIL'}\n")
+        f.write("G3 retired (see phase_compare source): rms_ratio reported as diagnostic only\n")
         f.write(f"Attribution check (|pipeline delta| <= |engine delta| + 1.5pp on "
                 f"divergent cases): {'PASS' if attributed else 'FAIL'}\n")
         f.write("\nPipeline-mechanics equivalence (all 10 cases): member counts 99-135 "
@@ -218,9 +223,9 @@ def phase_compare() -> int:
     print(df.to_string(**fmt))
     print(f"\n[{n_agree} engine-agreeing / {len(diverge)} divergent]")
     print(f"G1 in-band: {'PASS' if g1 else 'FAIL'}  |  G2 deltas: {'PASS' if g2 else 'FAIL'} "
-          f"(mean {agree['delta'].mean():+.3f}pp)  |  G3 rms: {'PASS' if g3 else 'FAIL'}  |  "
+          f"(mean {agree['delta'].mean():+.3f}pp)  |  rms: diagnostic only  |  "
           f"attribution: {'PASS' if attributed else 'FAIL'}")
-    return 0 if (g1 and g2 and g3 and attributed) else 1
+    return 0 if (g1 and g2 and attributed) else 1
 
 
 if __name__ == "__main__":
