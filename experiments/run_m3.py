@@ -243,6 +243,26 @@ def summarize(scores: pd.DataFrame) -> pd.DataFrame:
     return out.sort_values("rank_smape")
 
 
+def cmd_stats(args) -> int:
+    """Friedman + Hochberg post-hoc (the paper's Table 6 procedure) on a results run."""
+    from baggets.stats import friedman_hochberg
+
+    path = RESULTS_ROOT / args.run_id / "scores.parquet"
+    if not path.exists():
+        print(f"no scores at {path}")
+        return 1
+    scores = pd.read_parquet(path)
+    per = scores.groupby(["uid", "strategy"], as_index=False)[args.metric].mean()
+    res = friedman_hochberg(per, metric=args.metric, control=args.control)
+    print(f"Friedman p-value: {res['friedman_pvalue']:.3e}  (n={res['n_series']} series)")
+    print(f"Control: {res['control']} (mean rank {res['control_mean_rank']:.3f})\n")
+    print(res["table"].to_string(index=False, float_format=lambda v: f"{v:.4f}"))
+    out = RESULTS_ROOT / args.run_id / f"stats_{args.metric}.csv"
+    res["table"].to_csv(out, index=False)
+    print(f"\nwrote {out}")
+    return 0
+
+
 def cmd_report(args) -> int:
     runs = sorted(RESULTS_ROOT.glob("*/summary.csv"))
     if not runs:
@@ -281,6 +301,12 @@ def main() -> int:
     pr = sub.add_parser("report")
     pr.add_argument("--run-id")
     pr.set_defaults(fn=cmd_report)
+
+    ps = sub.add_parser("stats")
+    ps.add_argument("--run-id", required=True)
+    ps.add_argument("--metric", default="smape")
+    ps.add_argument("--control", default=None)
+    ps.set_defaults(fn=cmd_stats)
 
     args = p.parse_args()
     return args.fn(args)
