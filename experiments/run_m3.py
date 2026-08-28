@@ -26,6 +26,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from scipy.stats import trim_mean
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
@@ -54,7 +55,12 @@ from baggets.selection import (  # noqa: E402
 CACHE_ROOT = ROOT / "data" / "cache"
 RESULTS_ROOT = ROOT / "results"
 
-AGGREGATORS = {"median": lambda e: np.median(e, axis=0), "mean": lambda e: np.mean(e, axis=0)}
+AGGREGATORS = {
+    "median": lambda e: np.median(e, axis=0),
+    "mean": lambda e: np.mean(e, axis=0),
+    # 10%-per-tail trimmed mean: mean efficiency, median-like tail robustness
+    "trimmed": lambda e: trim_mean(e, 0.1, axis=0),
+}
 
 
 # --------------------------------------------------------------- strategies

@@ -178,10 +178,18 @@ class GreedyCovarianceSelection:
     def select(
         self, artifacts: ValidationArtifacts, n_select: int, rng: np.random.Generator
     ) -> np.ndarray:
+        from functools import partial
+
+        from scipy.stats import trim_mean
+
         from .metrics import mape, smape
 
         metric = {"mape": mape, "smape": smape}[self.metric]
-        agg = {"median": np.median, "mean": np.mean}[self.aggregator]
+        agg = {
+            "median": np.median,
+            "mean": np.mean,
+            "trimmed": partial(trim_mean, proportiontocut=0.1),
+        }[self.aggregator]
         pool = np.arange(artifacts.n_members)
         if self.candidate_pool is not None and self.candidate_pool < pool.size:
             pool = np.sort(_rank_by_error(artifacts.val_errors)[: self.candidate_pool])
