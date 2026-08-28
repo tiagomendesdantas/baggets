@@ -15,6 +15,12 @@ seed 42, eval seed 1.
 | Proposed approach (`paper-auto`), Mean sMAPE | 13.617 ± 0.20 | **13.847** (Δ +0.230) | ❌ MISS by 0.03 |
 | Proposed < Bagged.BLD.MBB ordering | 13.617 < 13.653 (Δ −0.036) | 13.847 ≈ 13.846 (Δ +0.001) | ❌ edge not reproduced |
 
+Aggregation per row follows each method's own protocol: the proposed approach uses the
+**median** of the member forecasts (paper Algorithm 2, line 20; also what Tier-4 compared
+against in the original R output), while the Bagged.BLD.MBB.ETS row uses the **mean**, as
+that method publishes. Every un-suffixed strategy in the tables below is median-aggregated;
+`:mean` / `:trimmed` suffixes mark the exceptions.
+
 ## Full strategy table (Mean sMAPE / mean rank, 1,428 series)
 
 | strategy | mean sMAPE | rank | note |
