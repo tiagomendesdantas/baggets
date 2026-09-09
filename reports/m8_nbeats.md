@@ -1,7 +1,7 @@
 # M8 — A neural base learner inside the bagging pipeline
 
 **Date**: 2026-09-09 · M3 monthly · B=100 · plain bagging (`NoSelection` + mean)
-**Status**: final for the interpretable arm, n=300 matched series. The generic arm is still running.
+**Status**: final. Three arms, n=300 matched series each.
 
 > **Note on a reading that changed.** An earlier pass over the first 55 series showed the
 > two engines tied (p = 0.68). At n = 300 the ordering reversed and the difference became
@@ -22,29 +22,51 @@ comparison is one its authors invited.
 
 ## Result
 
-| engine | mean sMAPE | median sMAPE | mean MASE | median MASE |
+| engine | mean sMAPE | median sMAPE | mean MASE | median MASE | beats ETS on |
+|---|---|---|---|---|---|
+| **bagged ETS** | **24.59** | **21.70** | **0.723** | **0.675** | — |
+| bagged N-BEATS, interpretable | 25.28 | 23.18 | 0.775 | 0.703 | 43% (128/300) |
+| bagged N-BEATS, generic | 71.87 | 69.84 | 2.161 | 1.822 | **1% (4/300)** |
+
+Friedman + Hochberg, the paper's procedure, control = ETS (Friedman p = 5.3e-94
+on sMAPE, 2.0e-86 on MASE):
+
+| arm | mean rank (sMAPE) | p Hochberg | mean rank (MASE) | p Hochberg |
 |---|---|---|---|---|
-| **bagged ETS** | **24.59** | **21.70** | **0.723** | **0.675** |
-| bagged N-BEATS (interpretable) | 25.28 | 23.18 | 0.775 | 0.703 |
+| N-BEATS interpretable | 1.59 | 0.072 | 1.60 | 0.102 |
+| N-BEATS generic | 2.97 | <1e-15 | 2.93 | <1e-15 |
 
-Wilcoxon signed-rank over the 300 matched series:
+## Two results, and they are not the same result
 
-| metric | W | p | mean difference (N-BEATS − ETS) |
-|---|---|---|---|
-| sMAPE | 19558 | **0.045** | +0.69 |
-| MASE | 18767 | **0.011** | +0.053 |
+**The generic architecture collapses.** 71.87 mean sMAPE against 24.59, ahead on
+four series out of three hundred. This is not a tuning gap; a learned basis with
+nothing to constrain it, fitted to tens of windows, is free to do anything
+between the observations and does.
 
-N-BEATS wins on **43% of series (128/300)**.
+**The interpretable architecture is competitive.** 25.28 against 24.59 — within
+0.7 sMAPE of automatic ETS while training per series on tens of windows.
 
-**Exponential smoothing wins, and the margin is real.** It is also small — 0.69
-sMAPE — so the honest statement is "consistently a little worse", not "much
-worse". Consistency is what the test detects; magnitude is what the table shows,
-and the two should not be reported as one thing.
+Whether that 0.7 is "significant" depends on the test, and both are reported
+here because they disagree. Pairwise Wilcoxon on the two arms gives p = 0.045
+and 0.011; Friedman with Hochberg-adjusted comparison against ETS as control
+gives p = 0.072 and 0.102. The pairwise test is more powerful and the multi-group
+procedure is more conservative, which is the trade they exist to make. The
+defensible reading is: **ETS is ahead, and the interpretable network is close
+enough that the margin does not survive a conservative correction.**
 
-Friedman is the paper's procedure and is used elsewhere in this repo, but it is
-a multi-group test. Two paired arms are a Wilcoxon signed-rank problem: same
-series, two measurements each. The generic N-BEATS arm now running makes three,
-at which point Friedman + Hochberg applies again.
+## What the gap between the two architectures says
+
+The difference between 25.28 and 71.87 is the only thing separating them: the
+interpretable variant constrains each block to a **fixed basis** — a polynomial
+for trend, a Fourier series for seasonality — while the generic one learns its
+basis from the data.
+
+Trend and seasonality on a fixed basis is, structurally, close to what
+exponential smoothing and STL already encode. So on data this small the network
+works when it is handed the structure, and at that point it is approximately
+doing what the statistical method does. **Inductive bias is standing in for data
+that isn't there** — which is a reason to prefer the statistical method here, not
+a reason to prefer a network that has been told the answer.
 
 This is the direction Makridakis, Spiliotis and Assimakopoulos (2018) reported
 when they put statistical and machine-learning methods head to head on
@@ -57,9 +79,9 @@ The pipeline hands each member **one series**. An M3 monthly series is 48–144
 points, so after a lookback window a member trains on **tens of windows** —
 N1402 gives 8. N-BEATS's published results come from *cross-learning*: one model
 over 100,000 series. Per series is a different regime, and the honest reading is
-that a deep network cannot show what it is for on this much data. That it lands
-within 0.7 sMAPE of automatic ETS on eight training windows is arguably the more
-surprising half of the result.
+that a deep network cannot show what it is for on this much data. That the
+constrained variant still lands within 0.7 sMAPE of automatic ETS on eight
+training windows is arguably the more surprising half of the result.
 
 Two things fall out of that and are worth stating separately from the score:
 
