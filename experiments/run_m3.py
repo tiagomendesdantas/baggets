@@ -52,6 +52,37 @@ from baggets.selection import (  # noqa: E402
     TopKSelection,
 )
 
+# --------------------------------------------------------------- engines
+# The base learner is pluggable (baggets.engine.ForecastEngine). ETS is the
+# paper's and the default; "nbeats" swaps in the PyTorch N-BEATS engine.
+#
+# Cost warning, and the reason neural runs are matched-subset rather than full
+# M3: an ETS fit is milliseconds, an N-BEATS fit is seconds. At B=1000 that is
+# the difference between an overnight run and an infeasible one. Neural runs
+# therefore use a small B and a series subset, and the ETS arm must be rerun
+# under the SAME B and SAME series for the comparison to mean anything.
+ENGINES = ("ets", "nbeats", "nbeats-i")
+
+
+def build_engine(name: str, season_length: int, epochs: int, seed: int):
+    if name == "ets":
+        return None  # pipeline default
+    import torch
+
+    from baggets.nbeats import NBeatsConfig, NBeatsEngine
+
+    # one thread per member: joblib already parallelises across series, and
+    # letting torch also fan out oversubscribes the box and slows everything.
+    torch.set_num_threads(1)
+    cfg = NBeatsConfig(
+        interpretable=name.endswith("-i"),
+        max_epochs=epochs,
+        patience=max(10, epochs // 10),
+        seed=seed,
+    )
+    return NBeatsEngine(season_length, cfg)
+
+
 CACHE_ROOT = ROOT / "data" / "cache"
 RESULTS_ROOT = ROOT / "results"
 
@@ -102,15 +133,19 @@ def parse_strategy(spec: str):
 
 
 # --------------------------------------------------------------- run key
-def make_run_key(group: str, n_bootstraps: int, root_seed: int) -> str:
+def make_run_key(group: str, n_bootstraps: int, root_seed: int,
+                 engine: str = "ets", epochs: int = 150) -> str:
     params = {
         "group": group,
         "n_bootstraps": n_bootstraps,
         "root_seed": root_seed,
+        "engine": engine,
         "h_val_rule": "v1",
         "statsforecast": statsforecast.__version__,
         "baggets": baggets.__version__,
     }
+    if engine != "ets":
+        params["epochs"] = epochs
     key = hashlib.md5(json.dumps(params, sort_keys=True).encode()).hexdigest()[:10]
     return key, params
 
@@ -127,7 +162,8 @@ def select_records(group: str, limit: int | None, uids: list[str] | None):
 
 # --------------------------------------------------------------- precompute
 def cmd_precompute(args) -> int:
-    run_key, params = make_run_key(args.group, args.n_bootstraps, args.seed)
+    run_key, params = make_run_key(args.group, args.n_bootstraps, args.seed,
+                                   args.engine, getattr(args, "epochs", 150))
     cache_dir = CACHE_ROOT / args.group / run_key
     cache_dir.mkdir(parents=True, exist_ok=True)
     with open(cache_dir / "manifest.json", "w") as f:
@@ -135,7 +171,8 @@ def cmd_precompute(args) -> int:
 
     records = select_records(args.group, args.limit, args.uids)
     todo = [r for r in records if not (cache_dir / f"{r.uid}.npz").exists()]
-    print(f"run_key={run_key}: {len(records)} series, {len(todo)} to compute "
+    print(f"run_key={run_key}: engine={args.engine}, B={args.n_bootstraps}, "
+          f"{len(records)} series, {len(todo)} to compute "
           f"({len(records) - len(todo)} cached)")
     if not todo:
         return 0
@@ -144,7 +181,10 @@ def cmd_precompute(args) -> int:
 
     def _one(rec):
         t = time.time()
-        meta = precompute_series(rec, args.n_bootstraps, args.seed, cache_dir / f"{rec.uid}.npz")
+        engine = build_engine(args.engine, rec.season_length, getattr(args, "epochs", 150),
+                              args.seed)
+        meta = precompute_series(rec, args.n_bootstraps, args.seed,
+                                 cache_dir / f"{rec.uid}.npz", engine=engine)
         return rec.uid, meta, time.time() - t
 
     results = Parallel(n_jobs=args.n_jobs, verbose=0, return_as="generator")(
@@ -164,7 +204,8 @@ def cmd_precompute(args) -> int:
 
 # --------------------------------------------------------------- evaluate
 def cmd_evaluate(args) -> int:
-    run_key, _ = make_run_key(args.group, args.n_bootstraps, args.seed)
+    run_key, _ = make_run_key(args.group, args.n_bootstraps, args.seed,
+                              args.engine, getattr(args, "epochs", 150))
     cache_dir = CACHE_ROOT / args.group / run_key
     records = select_records(args.group, args.limit, args.uids)
     paths = [cache_dir / f"{r.uid}.npz" for r in records]
@@ -290,6 +331,10 @@ def main() -> int:
     common.add_argument("--seed", type=int, default=42, help="stage-A root seed")
     common.add_argument("--limit", type=int)
     common.add_argument("--uids", nargs="*")
+    common.add_argument("--engine", default="ets", choices=ENGINES,
+                        help="base learner; neural engines need the [torch] extra")
+    common.add_argument("--epochs", type=int, default=150,
+                        help="max training epochs per member (neural engines only)")
 
     pp = sub.add_parser("precompute", parents=[common])
     pp.add_argument("--n-jobs", type=int, default=6)

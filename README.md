@@ -42,6 +42,66 @@ fc.point                     # median ensemble forecast, shape (18,)
 fc.ensemble                  # member forecasts, shape (n_members, 18)
 ```
 
+## A neural base learner: N-BEATS
+
+The base learner is pluggable (`baggets.engine.ForecastEngine`). `ETSEngine` is
+the paper's and the default; `NBeatsEngine` swaps in a PyTorch implementation of
+N-BEATS (Oreshkin et al., ICLR 2020) so the *same* bootstrap machinery, member
+selection, metrics and M3 harness compare a statistical base learner against a
+deep one on identical footing.
+
+```python
+from baggets import BaggedETS, NBeatsConfig, NBeatsEngine, NoSelection
+
+model = BaggedETS(season_length=12, n_bootstraps=100, n_select=100,
+                  selection=NoSelection(100), aggregator="mean",   # plain bagging
+                  engine=NBeatsEngine(12, NBeatsConfig(interpretable=True)))
+model.fit(y)
+model.predict(h=18)
+```
+
+Two departures from the published N-BEATS, both because it is a base learner
+inside a per-series bootstrap ensemble rather than the paper's setup, and both
+worth stating plainly rather than discovering in the numbers:
+
+1. **Per series, not cross-learning.** `fit(y)` receives one series, so a model
+   sees only that series' windows. N-BEATS's published M3/M4 results come from
+   cross-learning over all series — orders of magnitude more data. On an M3
+   monthly series of 50 points this leaves **8 training windows**.
+2. **Depth and width scaled to the data.** The paper's generic stack is 30
+   blocks of width 512. The defaults here are far smaller; the paper's sizes are
+   still reachable through `NBeatsConfig`.
+
+The engine falls back to a naive forecast, and says so, on series too short to
+yield training windows — the same discipline `ETSEngine` applies to a failed fit.
+
+Training is instrumentable: pass `monitor_factory=` and each epoch is handed to
+your monitor. The interface is duck-typed and baggets takes no dependency on any
+particular one; [torch-training-probes](https://github.com/tiagomendesdantas/torch-training-probes)
+satisfies it and finds, on a real M3 series, a 60%-dead ReLU layer and validation
+loss bottoming at epoch 56 of 400.
+
+```bash
+uv sync --extra torch
+uv run python experiments/run_m3.py precompute --group monthly --limit 300 \
+    --n-bootstraps 100 --engine nbeats-i --epochs 150 --n-jobs 6
+```
+
+**Cost, and why neural runs are matched-subset.** An ETS fit is milliseconds; an
+N-BEATS fit is seconds. At the paper's B=1000 over 1,428 series that is the
+difference between an overnight run and an infeasible one. Neural runs therefore
+use a smaller B on a series subset — and the ETS arm is rerun under the *same* B
+and the *same* series, because otherwise the comparison means nothing.
+
+## An S3 artifact store
+
+Stage A is the expensive half, and its per-series cache is worth moving off one
+laptop. `baggets.aws.S3ArtifactStore` (extra: `aws`, uses boto3 and the standard
+credential chain) reads and writes those `.npz` tensors, and model checkpoints as
+state dicts — weights only, because `torch.save` of a whole module pickles code
+paths and an artifact store is the wrong place for something whose load is
+arbitrary code execution.
+
 ## Development
 
 ```bash

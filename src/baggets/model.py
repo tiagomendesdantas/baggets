@@ -19,7 +19,7 @@ import numpy as np
 from joblib import Parallel, delayed
 
 from .bootstrap import bld_mbb_bootstrap
-from .engine import ETSEngine, FittedETS
+from .engine import ETSEngine, ForecastEngine
 from .selection import ClusterSelection, SelectionStrategy
 from .validation import MIN_H_VAL, build_validation_artifacts, default_h_val
 
@@ -64,6 +64,7 @@ class BaggedETS:
         block_size: int | None = None,
         random_state: int | None = None,
         n_jobs: int = 1,
+        engine: ForecastEngine | None = None,
     ):
         self.season_length = int(season_length)
         self.n_bootstraps = int(n_bootstraps)
@@ -75,6 +76,7 @@ class BaggedETS:
         self.block_size = block_size
         self.random_state = random_state
         self.n_jobs = n_jobs
+        self.engine = engine if engine is not None else ETSEngine(self.season_length)
 
     # ------------------------------------------------------------------ fit
     def fit(self, y: np.ndarray) -> BaggedETS:
@@ -113,13 +115,14 @@ class BaggedETS:
                 validation_metric=self.validation_metric,
                 n_jobs=self.n_jobs,
                 meta={"lambda": boot.lam, "n_clipped": boot.n_clipped},
+                engine=self.engine,
             )
             selected = selection.select(self.artifacts_, self.n_select, rng)
 
-        engine = ETSEngine(self.season_length)
+        engine = self.engine
         members = boot.series[selected]
         if self.n_jobs == 1:
-            models: list[FittedETS] = [engine.fit(m) for m in members]
+            models: list[object] = [engine.fit(m) for m in members]
         else:
             models = Parallel(n_jobs=self.n_jobs, batch_size=16)(
                 delayed(engine.fit)(m) for m in members
@@ -133,9 +136,10 @@ class BaggedETS:
             "lambda": boot.lam,
             "n_clipped": boot.n_clipped,
             "h_val": h_val,
+            "engine": type(engine).__name__,
             "selection": selection.name if not selection_fallback else "fallback_random",
             "n_members": len(selected),
-            "n_final_fallbacks": int(sum(m.fallback for m in models)),
+            "n_final_fallbacks": int(sum(getattr(m, "fallback", False) for m in models)),
         }
         if self.artifacts_ is not None:
             self.info_["n_val_fallbacks"] = self.artifacts_.meta["n_val_fallbacks"]
@@ -149,7 +153,7 @@ class BaggedETS:
         R method silently defaulted to 10 through a bug."""
         if not hasattr(self, "models_"):
             raise RuntimeError("call fit() before predict()")
-        engine = ETSEngine(self.season_length)
+        engine = self.engine
         ensemble = np.vstack([engine.predict(m, h) for m in self.models_])
         agg = _AGGREGATORS.get(self.aggregator) if isinstance(self.aggregator, str) \
             else self.aggregator

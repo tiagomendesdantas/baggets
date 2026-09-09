@@ -17,6 +17,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+torch = [
+    "torch>=2.2",
+]
+aws = [
+    "boto3>=1.34",
+]
 experiments = [
     "pyarrow",
     "tqdm",

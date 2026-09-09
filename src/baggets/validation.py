@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from joblib import Parallel, delayed
 
-from .engine import ETSEngine
+from .engine import ETSEngine, ForecastEngine
 from .metrics import mape, smape
 
 __all__ = ["ValidationArtifacts", "build_validation_artifacts", "default_h_val", "MIN_H_VAL"]
@@ -68,10 +68,13 @@ def build_validation_artifacts(
     validation_metric: str = "mape",
     n_jobs: int = 1,
     meta: dict | None = None,
+    engine: ForecastEngine | None = None,
 ) -> ValidationArtifacts:
-    """Fit ETS to each truncated member and score its forecast of the held-out tail.
+    """Fit the base learner to each truncated member and score its forecast of the held-out tail.
 
     ``series`` is the (B, T) bootstrap pool (member 0 = original ``y``).
+    ``engine`` defaults to ``ETSEngine`` — pass another (e.g. ``NBeatsEngine``)
+    to validate members under a different base learner.
     """
     if validation_metric not in _METRICS:
         raise ValueError(f"unknown validation_metric {validation_metric!r}; use {set(_METRICS)}")
@@ -83,7 +86,7 @@ def build_validation_artifacts(
 
     val_actuals = y[n - h_val :]
     truncated = series[:, : n - h_val]
-    engine = ETSEngine(season_length)
+    engine = engine if engine is not None else ETSEngine(season_length)
 
     def _one(member: np.ndarray) -> tuple[np.ndarray, bool]:
         fc = engine.forecast(member, h_val)

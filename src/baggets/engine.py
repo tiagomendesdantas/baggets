@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import os
 import warnings
-from typing import NamedTuple
+from typing import NamedTuple, Protocol, runtime_checkable
 
 import numpy as np
 
@@ -27,7 +27,7 @@ if "NUMBA_CACHE_DIR" not in os.environ:  # persist JIT compilation across runs
 
 from statsforecast.models import AutoETS  # noqa: E402
 
-__all__ = ["ETSEngine", "EngineForecast", "FittedETS"]
+__all__ = ["ETSEngine", "EngineForecast", "FittedETS", "ForecastEngine"]
 
 # --------------------------------------------------------------------------
 # statsforecast optimizer patch (verified 2026-08-26 against R forecast::ets)
@@ -136,3 +136,23 @@ class ETSEngine:
                         fitted.model.predict_in_sample()["fitted"], dtype=np.float64
                     )
         return EngineForecast(mean, fitted_values, fitted.method, fitted.fallback)
+
+
+@runtime_checkable
+class ForecastEngine(Protocol):
+    """What the bagging machinery needs of a base learner.
+
+    ``ETSEngine`` is the reference implementation and the default everywhere.
+    Any object with these three methods can take its place — see
+    ``baggets.nbeats.NBeatsEngine``. Engines must be **stateless** across calls
+    (all fitted state lives in the object ``fit`` returns), because one engine
+    instance is shared across a whole bootstrap pool, sometimes in parallel.
+    """
+
+    season_length: int
+
+    def fit(self, y: np.ndarray) -> object: ...
+
+    def predict(self, fitted: object, h: int) -> np.ndarray: ...
+
+    def forecast(self, y: np.ndarray, h: int, with_fitted: bool = False) -> EngineForecast: ...

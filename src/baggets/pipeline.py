@@ -20,7 +20,7 @@ import numpy as np
 
 from .bootstrap import bld_mbb_bootstrap
 from .datasets import SeriesRecord
-from .engine import ETSEngine
+from .engine import ETSEngine, ForecastEngine
 from .selection import SelectionStrategy
 from .validation import (
     MIN_H_VAL,
@@ -71,15 +71,21 @@ def precompute_series(
     n_bootstraps: int,
     root_seed: int,
     out_path: Path,
+    engine: ForecastEngine | None = None,
 ) -> dict:
-    """Stage A for one series; writes ``out_path`` (.npz) and returns summary stats."""
+    """Stage A for one series; writes ``out_path`` (.npz) and returns summary stats.
+
+    ``engine`` defaults to ``ETSEngine``; pass another base learner to cache its
+    forecast tensors instead. Stage B is engine-agnostic — it only slices the
+    cached tensors — so a strategy sweep runs identically over either.
+    """
     rng = series_rng(root_seed, rec.uid)
     m = rec.season_length
     y = rec.y_train
     h_final = rec.horizon
 
     boot = bld_mbb_bootstrap(y, n_bootstraps, m, rng)
-    engine = ETSEngine(m)
+    engine = engine if engine is not None else ETSEngine(m)
 
     h_val = default_h_val(y.size, m)
     validated = h_val >= MIN_H_VAL(m)
@@ -87,6 +93,7 @@ def precompute_series(
         artifacts = build_validation_artifacts(
             boot.series, y, m, h_val, validation_metric="mape", n_jobs=1,
             meta={"lambda": boot.lam, "n_clipped": boot.n_clipped},
+            engine=engine,
         )
         val_forecasts = artifacts.val_forecasts
         val_errors = artifacts.val_errors
