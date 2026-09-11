@@ -12,7 +12,9 @@ accuracy by 1–4 pp) shows how violently the pipeline responds to it.
 
 > **Hypothesis.** Bagged ETS is a 1000-fit Monte Carlo approximation to model-form averaging.
 
-Verdict: **the substitution claim holds; the mechanism claim does not yet.** Details below.
+Verdict: **both halves hold.** ~15 ETS fits reproduce the bag (Finding 1), and the per-series gain
+tracks how unstable the ETS family choice is across bootstrap members (Finding 2, ρ = +0.0995,
+p = 1.65e-04 at n = 1428) — though the mechanism explains only ~1% of per-series variance.
 
 ---
 
@@ -52,36 +54,55 @@ corr(τ_bag, τ_ma) = **0.41 Spearman / 0.54 Pearson** — substantial, far from
 
 ---
 
-## Finding 2 — The mechanism test is inconclusive, and the pre-registered prediction was untestable
+## Finding 2 — Bagging's gain tracks ETS family instability (resolved, n = 1428)
 
-`experiments/model_averaging.py entropy` refit 100 members on each of 300 systematically sampled
-series (30k fits, 24 min) recording the selected ETS family.
+`experiments/model_averaging.py entropy` refit 100 **bootstrap** members on each of all 1428
+series (142,800 fits, 125 min), recording the selected ETS family. Member 0 is excluded from the
+instability statistics — it is the original series, not a bootstrap draw
+([bootstrap.py:70](../src/baggets/bootstrap.py#L70)) — and recorded separately.
 
-**Family choice is wildly unstable across bootstrap members** — the mechanism certainly exists:
+The analysis was **pre-registered before the data existed**
+(`experiments/analyze_family_instability.py`, committed ahead of the run): primary test
+Spearman(`n_distinct_families`, τ_bag), two-sided, α = 0.05, with τ member-0-free on both sides
+(plain ETS minus the ablation's member-0-free random-100 trimmed bag, never the contaminated
+`none100:trimmed`).
 
-- median **5 distinct families** per series (mean 5.47, max 13)
-- modal-family share: median 0.55
-- series where all 100 members agree: **1 of 300 (0.3%)**
-- member 0's family is the modal family in only 55% of series
+**Family choice is wildly unstable**: median **5 distinct families** per series across 100
+bootstrap members (mean 5.37, max 14); only **24 of 1428** series (1.7%) have all 100 members
+agreeing.
 
-The pre-registered prediction was *τ ≈ 0 where all members select the same family*. It **could not
-be tested**: the "stable" cell contains one series. Reported as a failed test design, not a result.
-
-The continuous analogue is **weak and not significant**:
+**Primary test: ρ = +0.0995, p = 1.65e-04.** Every secondary test agrees, all with the predicted
+sign:
 
 | predictor | vs τ_bag | vs τ_ma |
 |---|---|---|
-| family entropy | ρ = +0.055 (p = 0.34) | ρ = +0.092 (p = 0.11) |
-| n distinct families | ρ = +0.113 (p = 0.051) | ρ = +0.084 (p = 0.15) |
-| modal share | ρ = −0.022 (p = 0.71) | ρ = −0.056 (p = 0.33) |
+| n distinct families | ρ = +0.0995 (p = 1.7e-4) | ρ = +0.0925 (p = 4.6e-4) |
+| family entropy | ρ = +0.0965 (p = 2.6e-4) | ρ = +0.1007 (p = 1.4e-4) |
+| modal share | ρ = −0.0793 (p = 2.7e-3) | ρ = −0.0913 (p = 5.5e-4) |
 
-Entropy quartiles show a suggestive but non-monotone trend (τ_bag: Q1 0.137, Q2 −0.286, Q3 0.497,
-Q4 0.730). Direction is right; magnitude is not established at n = 300. Settling it needs the full
-1428 series (~2 h).
+The quartile view is the legible one, and it is monotone where the pilot's was not:
 
-**So: bagging can be *substituted* by model-form averaging (Finding 1, solid), but the per-series
-evidence that model-form instability is *the mechanism* is not there yet.** Those are two distinct
-claims and only the first is supported.
+| quartile | mean families | mean τ_bag | mean τ_ma |
+|---|---|---|---|
+| Q1 stable | 2.6 | **−0.100** | +0.006 |
+| Q2 | 4.5 | +0.483 | +0.426 |
+| Q3 | 6.0 | +0.431 | +0.699 |
+| Q4 unstable | 8.4 | **+1.184** | +1.193 |
+
+**Bagging's entire average gain is concentrated in the unstable half.** On the most-stable quartile
+(≤3 families, n = 347) it is **−0.104 pp, 95% CI [−0.390, +0.129]** — bagging does not pay there at
+all. The M7 pilot's original prediction (τ ≈ 0 where all members agree) was untestable at n = 1;
+at n = 24 it holds directionally — mean τ_bag −0.026 pp, Wilcoxon p = 0.944, indistinguishable
+from zero — though that subgroup is far too small to separate from the rest (Mann-Whitney p = 0.40).
+The ≤3-family quartile is the better-powered form of the same statement.
+
+**Two caveats, stated plainly.** First, the effect is *real but weak as a per-series predictor*:
+ρ ≈ 0.10 explains ~1% of the variance in τ_bag. The mechanism is established; it is not a
+forecast of which series will benefit. Second, measuring family instability costs 100 ETS fits per
+series — the very cost bagging was being questioned for — so this is a **mechanistic explanation,
+not an operational saving**. Whether a cheap pre-forecast proxy for instability exists is a
+separate question, and one that should be pre-registered rather than mined from this data (see
+Finding 3, where single-sample likelihood ambiguity already failed at that job).
 
 ## Finding 3 — Likelihood ambiguity does not predict where bagging helps (negative)
 
@@ -141,13 +162,16 @@ stands with a corrected margin.
 1. The honest headline is now one level below M6's: not "a 25-member trimmed bag suffices" but
    **"~15 ETS fits suffice"** — and the bag's remaining advantage over that is unmeasurable.
 2. Two engine findings now exist, not one, and they point in opposite directions on accuracy.
-3. The mechanism question is open. Finding 1 is consistent with model-form averaging but does not
-   establish it; Findings 2 and 3 both failed to confirm it per-series.
+3. **What bagging is doing in this pipeline is averaging over model-form uncertainty.** The two
+   halves now agree: a direct family average substitutes for the bag (Finding 1), and the bag's
+   gain appears exactly where the family choice is unstable and vanishes where it is not
+   (Finding 2). The remaining honest limits are that the mechanism is a weak per-series predictor
+   (~1% of variance) and that measuring it is not cheaper than the bag it explains.
 
 ## Open
 
-- [ ] Extend the family-entropy test from 300 to all 1428 series (~2 h) — the only way to settle
-      Finding 2 either way; at ρ ≈ 0.11 the n = 300 pilot is underpowered.
+- [ ] A *cheap pre-forecast proxy* for family instability, pre-registered before it is tested —
+      instability itself costs 100 fits to measure, so it explains the bag without replacing it.
 - [ ] Tier 1 threads T2–T8 (probabilistic calibration, conditional/heterogeneous, aggregation law)
       remain unrun; all are cache-only.
 - [ ] Persist `FittedETS.method` / `sigma2` in stage A so this never needs a refit again.
@@ -156,7 +180,9 @@ stands with a corrected margin.
 
 ```
 uv run python experiments/model_averaging.py families --n-jobs 6 --run-id m7_aicc      # 71 s
-uv run python experiments/model_averaging.py entropy  --n-series 300 --n-members 100   # 24 min
+uv run python experiments/model_averaging.py entropy --n-series 1428 --n-members 100 \
+    --cache-key 8d1f4360f7 --run-id m7_entropy_full                                    # 125 min
+uv run python experiments/analyze_family_instability.py                                # the test
 uv run python experiments/run_diagnostics.py ablate --n-perm 20 --run-id m7_ablation   # 52 s
 uv run python experiments/run_m3.py stats --run-id m7_tier0 --metric smape
 ```
