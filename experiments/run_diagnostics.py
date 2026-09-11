@@ -3,12 +3,16 @@
 Every diagnostic here is a pure function of what stage A already wrote, so a
 full 1428-series pass costs one decompression sweep and no ETS fits.
 
-``ablate``  T1, the member-0 gate. bootstrap.py:70 sets ``series[0] = x`` and
-            NoSelection.select returns ``arange(n)`` (selection.py:339), so
-            every ``noneN`` result -- including the M6 champions -- contains the
-            plain-ETS forecast of the *un-bootstrapped* series at 1/n weight.
-            This re-scores those configurations against member-0-free random
-            subsets, so the reported effect is bagging and not that free anchor.
+``ablate``  T1. bootstrap.py:70 sets ``series[0] = x`` -- the original series is
+            a designed ensemble member, as in the 2018 R source (``xs[[1]] <- x``).
+            This re-scores each configuration against pools drawn from the
+            bootstrap replicates only, to measure how much that member
+            contributes to the bag's accuracy. The right-hand arm is a
+            sensitivity variant, NOT a corrected baseline: the method includes
+            the original series. Note also that NoSelection.select returns
+            ``arange(n)`` (selection.py:339), so the original always gets a slot,
+            while RandomSelection includes it only with probability n/B -- an
+            asymmetry between rules that matters when ranking them at small n.
 """
 
 from __future__ import annotations
@@ -87,7 +91,7 @@ def _ablate_one(path: Path, sizes: tuple[int, ...], aggs: tuple[str, ...],
                     "smape_sd": float(vals[:, 0].std(ddof=1)) if len(vals) > 1 else 0.0,
                     "n_draws": len(idx_sets),
                 })
-    # member 0 alone: the plain-ETS anchor that the 'first' arm smuggles in
+    # member 0 alone: plain ETS on the original series -- the no-bagging benchmark
     s0, m0 = score(fc[0])
     rows.append({"uid": art.uid, "n": 1, "arm": "member0", "aggregator": "none",
                  "smape": s0, "mase": m0, "smape_sd": 0.0, "n_draws": 1})
@@ -132,7 +136,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
-    a = sub.add_parser("ablate", help="T1: member-0 contamination of the noneN arms")
+    a = sub.add_parser("ablate", help="T1: what the original series contributes as a member")
     a.add_argument("--group", default="monthly")
     a.add_argument("--sizes", default="10,25,50,100")
     a.add_argument("--aggregators", default="mean,median,trimmed")

@@ -73,16 +73,25 @@ statistics — it is the original series, not a bootstrap draw
 
 The analysis was **pre-registered before the data existed**
 (`experiments/analyze_family_instability.py`, committed ahead of the run): primary test
-Spearman(`n_distinct_families`, τ_bag), two-sided, α = 0.05, with τ member-0-free on both sides
-(plain ETS minus the ablation's member-0-free random-100 trimmed bag, never the contaminated
-`none100:trimmed`).
+Spearman(`n_distinct_families`, τ_bag), two-sided, α = 0.05. τ_bag is measured against the
+benchmark bagging is always judged against — **plain ETS on the original series, with no bagging**
+(14.253) — minus the bag's score.
 
 **Members routinely disagree**: median **5 distinct families** per series across 100 bootstrap
 members (mean 5.37, max 14); only **24 of 1428** series (1.7%) have all 100 members agreeing —
 which is what a resampling scheme that perturbs the data is supposed to produce.
 
-**Primary test: ρ = +0.0995, p = 1.65e-04.** Every secondary test agrees, all with the predicted
-sign:
+**Primary test: ρ = +0.0995, p = 1.65e-04.**
+
+*A declared post-hoc correction.* The pre-registration also excluded the original series from the
+**bag** side, which was wrong about the method — it is a designed member (Finding 5). Repeating the
+identical test against bagging as specified (`none100:trimmed`) gives **ρ = +0.0985,
+p = 1.94e-04**: the two definitions agree, so nothing here turns on the error. The pre-registered
+figure remains primary and the corrected one is reported beside it, rather than substituted —
+silently swapping a definition after seeing the result is the post-hoc flexibility this project
+criticises in the 2018 paper.
+
+Every secondary test agrees, all with the predicted sign:
 
 | predictor | vs τ_bag | vs τ_ma |
 |---|---|---|
@@ -159,24 +168,40 @@ sensitive to numerical detail in both directions.
 
 ---
 
-## Finding 5 — The member-0 confound is real, small, and M6's conclusion survives
+## Finding 5 — How much the original series contributes as an ensemble member
 
-[bootstrap.py:70](../src/baggets/bootstrap.py#L70) sets `series[0] = x` and
-[selection.py:339](../src/baggets/selection.py#L339) returns `arange(n)`, so every `noneN` arm
-contains the plain-ETS forecast of the *un-bootstrapped* series at 1/n weight.
-`experiments/run_diagnostics.py ablate` re-scores against member-0-free random subsets
-(20 permutations, all 1428 series):
+**The original series is a designed member of the pool, not a leak.**
+[bootstrap.py:70](../src/baggets/bootstrap.py#L70) sets `series[0] = x` because the 2018 R source
+does (`xs[[1]] <- x`), inherited from Bergmeir's `bld.mbb.bootstrap`, and every selection rule
+there draws from the full pool — `bootstrapped_series[selecClus]` for the cluster arm,
+`bootstrapped_series[sample(1:1000,100)]` for the random one. Including it is the method.
 
-| n | aggregator | first-n (as deployed) | random-n, member-0 free | difference |
+Separately, the *forecast* of that member is the benchmark bagging is judged against: plain ETS on
+the original series, no bagging, 14.253 mean sMAPE. Those are two different roles for the same
+object and should not be conflated.
+
+What is worth measuring is how much that member contributes to the bag's accuracy.
+`experiments/run_diagnostics.py ablate` re-scores each configuration against pools drawn from the
+bootstrap replicates only — members 1..999, original excluded — over 20 permutations, all 1428
+series:
+
+| n | aggregator | as specified (first-n, incl. original) | replicates only (original excluded) | the original member's contribution |
 |---|---|---|---|---|
 | 10 | mean | 13.782 | 13.888 | −0.105 |
 | 25 | trimmed | **13.754** | **13.795** | −0.041 |
 | 25 | mean | 13.736 | 13.805 | −0.069 |
 | 100 | trimmed | 13.741 | 13.754 | −0.013 |
 
-The contamination is real and scales as ~1/n exactly as predicted. **M6's headline number should be
-13.795, not 13.754** — still comfortably better than `paper-auto` (13.847), so Finding 2 of M6
-stands with a corrected margin.
+Read the right-hand column as *"what bagging would score if the original series were removed from
+the pool"* — a sensitivity variant, not a corrected baseline. **M6's headline 13.754 stands**: it
+is the method as specified. The original member is worth ~0.04 pp at n = 25 and ~0.01 pp at
+n = 100, shrinking with its ensemble weight exactly as a 1/n contribution should.
+
+One genuine asymmetry does follow, and it is between *selection rules* rather than in the pool:
+`NoSelection(n)` returns `arange(n)`, so the original always gets a slot, while `RandomSelection`
+includes it only with probability n/B. At n = 10 that is worth ~0.1 pp, which matters when ranking
+rules against each other at small n. Note `NoSelection` is the one behaving like the method here —
+cluster, topk and greedy also draw from the full pool; `random` is this project's own ablation.
 
 ---
 

@@ -227,9 +227,10 @@ def _family_counts(methods: list[str]) -> dict:
 def _entropy_one(path: Path, n_members: int, out_dir: Path) -> None:
     """Refit ``n_members`` BOOTSTRAP members, recording the selected ETS family.
 
-    Member 0 is the original series, not a bootstrap draw (bootstrap.py:70), so
-    it is excluded from the instability statistics and recorded on its own --
-    the same contamination class the M7 T1 ablation quantified. The per-member
+    Member 0 is the original series, not a bootstrap draw (bootstrap.py:70). It
+    is a designed ensemble member (the R source sets xs[[1]] <- x), but it is not
+    a draw from the resampling distribution, so it is excluded from these
+    disagreement statistics and recorded on its own instead. The per-member
     family labels are persisted, not just the derived scalars, so later
     family-level analysis never needs another refit.
 
