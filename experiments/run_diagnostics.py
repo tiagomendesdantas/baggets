@@ -26,13 +26,36 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "experiments"))
 
 from joblib import Parallel, delayed  # noqa: E402
-from run_m3 import AGGREGATORS, make_run_key  # noqa: E402
+from run_m3 import AGGREGATORS  # noqa: E402
 
 from baggets.metrics import mase, smape  # noqa: E402
 from baggets.pipeline import load_series_artifacts  # noqa: E402
 
 CACHE_ROOT = ROOT / "data" / "cache"
 RESULTS_ROOT = ROOT / "results"
+
+def resolve_cache_dir(group: str, cache_key: str | None, n_bootstraps: int, seed: int) -> Path:
+    """Locate a stage-A cache, by explicit key or by deriving one.
+
+    An explicit key is preferred for the historical caches: run_m3.make_run_key
+    gained an ``engine`` field in M8, so keys derived today do not match caches
+    written before it (the 1428-series B=1000 monthly cache is 8d1f4360f7, whose
+    manifest has no ``engine``). Deriving is kept as the default for new runs.
+    """
+    from run_m3 import make_run_key
+
+    root = CACHE_ROOT / group
+    key = cache_key or make_run_key(group, n_bootstraps, seed)[0]
+    cache_dir = root / key
+    if cache_dir.exists():
+        return cache_dir
+    available = sorted(d.name for d in root.glob("*/") if any(d.glob("*.npz")))
+    raise SystemExit(
+        f"no cache at {cache_dir}\n"
+        f"available under {root}: {', '.join(available) or '(none)'}\n"
+        f"pass --cache-key explicitly (the M7 B=1000 monthly cache is 8d1f4360f7)"
+    )
+
 
 
 def _ablate_one(path: Path, sizes: tuple[int, ...], aggs: tuple[str, ...],
@@ -72,14 +95,10 @@ def _ablate_one(path: Path, sizes: tuple[int, ...], aggs: tuple[str, ...],
 
 
 def cmd_ablate(args) -> int:
-    run_key, _ = make_run_key(args.group, args.n_bootstraps, args.seed)
-    cache_dir = CACHE_ROOT / args.group / run_key
+    cache_dir = resolve_cache_dir(args.group, args.cache_key, args.n_bootstraps, args.seed)
     paths = sorted(cache_dir.glob("*.npz"))
     if args.limit:
         paths = paths[: args.limit]
-    if not paths:
-        print(f"no cache at {cache_dir}")
-        return 1
     sizes = tuple(int(s) for s in args.sizes.split(","))
     aggs = tuple(args.aggregators.split(","))
     print(f"{len(paths)} series x sizes {sizes} x {aggs} x {args.n_perm} permutations",
@@ -120,6 +139,7 @@ def main() -> int:
     a.add_argument("--n-perm", type=int, default=20)
     a.add_argument("--n-bootstraps", type=int, default=1000)
     a.add_argument("--seed", type=int, default=42)
+    a.add_argument("--cache-key", help="stage-A cache key (M7 monthly B=1000 is 8d1f4360f7)")
     a.add_argument("--limit", type=int)
     a.add_argument("--n-jobs", type=int, default=6)
     a.add_argument("--run-id", default="m7_ablation")

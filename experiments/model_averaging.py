@@ -24,6 +24,8 @@ report` and `run_m3.py stats` work on them unchanged.
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import sys
 import time
 import warnings
@@ -47,6 +49,29 @@ from baggets.pipeline import load_series_artifacts  # noqa: E402
 
 CACHE_ROOT = ROOT / "data" / "cache"
 RESULTS_ROOT = ROOT / "results"
+
+def resolve_cache_dir(group: str, cache_key: str | None, n_bootstraps: int, seed: int) -> Path:
+    """Locate a stage-A cache, by explicit key or by deriving one.
+
+    An explicit key is preferred for the historical caches: run_m3.make_run_key
+    gained an ``engine`` field in M8, so keys derived today do not match caches
+    written before it (the 1428-series B=1000 monthly cache is 8d1f4360f7, whose
+    manifest has no ``engine``). Deriving is kept as the default for new runs.
+    """
+    from run_m3 import make_run_key
+
+    root = CACHE_ROOT / group
+    key = cache_key or make_run_key(group, n_bootstraps, seed)[0]
+    cache_dir = root / key
+    if cache_dir.exists():
+        return cache_dir
+    available = sorted(d.name for d in root.glob("*/") if any(d.glob("*.npz")))
+    raise SystemExit(
+        f"no cache at {cache_dir}\n"
+        f"available under {root}: {', '.join(available) or '(none)'}\n"
+        f"pass --cache-key explicitly (the M7 B=1000 monthly cache is 8d1f4360f7)"
+    )
+
 
 # The 15 families AutoETS("ZZZ") actually searches: error x trend x season with
 # additive errors barred from multiplicative seasonality (R's ets restriction,
@@ -184,69 +209,94 @@ def cmd_families(args) -> int:
 
 
 # --------------------------------------------------------------------- T0.2
-def _entropy_one(path: Path, n_members: int) -> dict | None:
-    """Refit the first ``n_members`` cached member series, recording family only."""
-    art = load_series_artifacts(path)
-    if art.validation is None:  # no validation window -> pool not exposed on the dataclass
-        with np.load(path) as z:
-            pool = z["series"].astype(np.float64)
-    else:
-        pool = art.validation.series
-    engine = ETSEngine(art.season_length)
-    methods = [engine.fit(m).method for m in pool[:n_members]]
+def _family_counts(methods: list[str]) -> dict:
+    """Instability statistics for one series' member family choices."""
     counts = pd.Series(methods).value_counts()
     p = (counts / counts.sum()).to_numpy()
     ent = float(-(p * np.log(p)).sum())
     return {
-        "uid": art.uid,
         "n_members_refit": len(methods),
         "n_distinct_families": int(counts.size),
         "modal_family": str(counts.index[0]),
         "modal_share": float(p[0]),
         "family_entropy": ent,
         "n_eff_families": float(np.exp(ent)),
-        "member0_family": methods[0],
-        "member0_is_modal": bool(methods[0] == counts.index[0]),
     }
 
 
-def cmd_entropy(args) -> int:
-    from run_m3 import make_run_key  # same cache key derivation
+def _entropy_one(path: Path, n_members: int, out_dir: Path) -> None:
+    """Refit ``n_members`` BOOTSTRAP members, recording the selected ETS family.
 
-    run_key, _ = make_run_key(args.group, args.n_bootstraps, args.seed)
-    cache_dir = CACHE_ROOT / args.group / run_key
+    Member 0 is the original series, not a bootstrap draw (bootstrap.py:70), so
+    it is excluded from the instability statistics and recorded on its own --
+    the same contamination class the M7 T1 ablation quantified. The per-member
+    family labels are persisted, not just the derived scalars, so later
+    family-level analysis never needs another refit.
+
+    Writes ``<out_dir>/<uid>.json`` atomically and returns nothing; resume is
+    "the file already exists".
+    """
+    art = load_series_artifacts(path)
+    if art.validation is None:  # no validation window -> pool not on the dataclass
+        with np.load(path) as z:
+            pool = z["series"].astype(np.float64)
+    else:
+        pool = art.validation.series
+
+    engine = ETSEngine(art.season_length)
+    member0 = engine.fit(pool[0]).method
+    methods = [engine.fit(m).method for m in pool[1 : 1 + n_members]]
+
+    rec = {"uid": art.uid, **_family_counts(methods)}
+    rec["member0_family"] = member0
+    rec["member0_is_modal"] = bool(member0 == rec["modal_family"])
+    rec["member_families"] = methods
+
+    tmp = out_dir / f"{art.uid}.json.tmp"
+    tmp.write_text(json.dumps(rec))
+    os.replace(tmp, out_dir / f"{art.uid}.json")
+
+
+def cmd_entropy(args) -> int:
+    cache_dir = resolve_cache_dir(args.group, args.cache_key, args.n_bootstraps, args.seed)
     records = load_m3(args.group, ROOT / "data" / "m3")
     paths = [cache_dir / f"{r.uid}.npz" for r in records]
     paths = [p for p in paths if p.exists()]
-    if not paths:
-        print(f"no cache at {cache_dir}; run precompute first")
-        return 1
 
     # Systematic sample over the uid ordering: deterministic, and independent of
     # anything correlated with the bagging effect we are about to test against.
     if args.n_series and args.n_series < len(paths):
         step = len(paths) / args.n_series
         paths = [paths[int(i * step)] for i in range(args.n_series)]
-    print(f"{len(paths)} series x {args.n_members} members "
-          f"= {len(paths)*args.n_members} ETS fits", flush=True)
-
-    t0 = time.time()
-    out = Parallel(n_jobs=args.n_jobs, return_as="generator")(
-        delayed(_entropy_one)(p, args.n_members) for p in paths
-    )
-    rows = []
-    for i, r in enumerate(out):
-        if r is not None:
-            rows.append(r)
-        if (i + 1) % 25 == 0:
-            el = time.time() - t0
-            print(f"[{i+1}/{len(paths)}] {el:.0f}s, ETA {el/(i+1)*(len(paths)-i-1):.0f}s",
-                  flush=True)
 
     out_dir = RESULTS_ROOT / args.run_id
-    out_dir.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame(rows).to_parquet(out_dir / "family_entropy.parquet", index=False)
-    print(f"\n{len(rows)} series in {(time.time()-t0)/60:.1f} min -> {out_dir}")
+    series_dir = out_dir / "series"
+    series_dir.mkdir(parents=True, exist_ok=True)
+    todo = [p for p in paths if not (series_dir / f"{p.stem}.json").exists()]
+    print(f"{len(paths)} series x {args.n_members} bootstrap members; "
+          f"{len(todo)} to fit ({len(paths)-len(todo)} cached) "
+          f"= {len(todo)*args.n_members} ETS fits", flush=True)
+
+    t0 = time.time()
+    if todo:
+        gen = Parallel(n_jobs=args.n_jobs, return_as="generator")(
+            delayed(_entropy_one)(p, args.n_members, series_dir) for p in todo
+        )
+        for i, _ in enumerate(gen):
+            if (i + 1) % 25 == 0:
+                el = time.time() - t0
+                print(f"[{i+1}/{len(todo)}] {el/60:.1f}m, "
+                      f"ETA {el/(i+1)*(len(todo)-i-1)/60:.1f}m", flush=True)
+
+    # aggregate: rebuild the summary from whatever is on disk
+    rows = [json.loads((series_dir / f"{p.stem}.json").read_text())
+            for p in paths if (series_dir / f"{p.stem}.json").exists()]
+    df = pd.DataFrame(rows)
+    df.drop(columns=["member_families"]).to_parquet(
+        out_dir / "family_entropy.parquet", index=False)
+    print(f"\n{len(df)} series in {(time.time()-t0)/60:.1f} min -> {out_dir}")
+    print(f"  distinct families per series: median {df.n_distinct_families.median():.0f}, "
+          f"mean {df.n_distinct_families.mean():.2f}, max {df.n_distinct_families.max()}")
     return 0
 
 
@@ -268,6 +318,7 @@ def main() -> int:
     e.add_argument("--n-members", type=int, default=100)
     e.add_argument("--n-bootstraps", type=int, default=1000)
     e.add_argument("--seed", type=int, default=42)
+    e.add_argument("--cache-key", help="stage-A cache key (M7 monthly B=1000 is 8d1f4360f7)")
     e.add_argument("--n-jobs", type=int, default=6)
     e.add_argument("--run-id", default="m7_entropy")
     e.set_defaults(func=cmd_entropy)
