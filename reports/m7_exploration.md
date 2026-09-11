@@ -12,9 +12,12 @@ accuracy by 1–4 pp) shows how violently the pipeline responds to it.
 
 > **Hypothesis.** Bagged ETS is a 1000-fit Monte Carlo approximation to model-form averaging.
 
-Verdict: **both halves hold.** ~15 ETS fits reproduce the bag (Finding 1), and the per-series gain
-tracks how unstable the ETS family choice is across bootstrap members (Finding 2, ρ = +0.0995,
-p = 1.65e-04 at n = 1428) — though the mechanism explains only ~1% of per-series variance.
+Verdict: **Finding 1 carries the result.** ~15 ETS fits reproduce the bag. The per-series gain is
+also associated with how much members disagree about model form (Finding 2, ρ = +0.0995,
+p = 1.65e-04 at n = 1428), but that association explains only ~1% of per-series variance, points
+in a direction that is close to mechanical, and was never separated from the simpler explanation
+that bagging helps whenever member forecasts are spread apart. Read Finding 1 as the claim and
+Finding 2 as supporting description.
 
 ---
 
@@ -54,11 +57,18 @@ corr(τ_bag, τ_ma) = **0.41 Spearman / 0.54 Pearson** — substantial, far from
 
 ---
 
-## Finding 2 — Bagging's gain tracks ETS family instability (resolved, n = 1428)
+## Finding 2 — Bagging's gain is associated with how much members disagree about model form (n = 1428)
+
+**This variation is by design, not a defect.** BLD.MBB exists to generate genuinely different
+series, and `AutoETS` re-selects a model on each one, so members choosing different ETS families is
+the mechanism operating as intended. Note the vocabulary deliberately: elsewhere in this project
+"instability" denotes a *numerical defect* — the optimizer flipping families through
+under-convergence (Finding 4). Data-driven variation and optimizer-driven flipping are different
+phenomena and should not share a word.
 
 `experiments/model_averaging.py entropy` refit 100 **bootstrap** members on each of all 1428
-series (142,800 fits, 125 min), recording the selected ETS family. Member 0 is excluded from the
-instability statistics — it is the original series, not a bootstrap draw
+series (142,800 fits, 125 min), recording the selected ETS family. Member 0 is excluded from these
+statistics — it is the original series, not a bootstrap draw
 ([bootstrap.py:70](../src/baggets/bootstrap.py#L70)) — and recorded separately.
 
 The analysis was **pre-registered before the data existed**
@@ -67,9 +77,9 @@ Spearman(`n_distinct_families`, τ_bag), two-sided, α = 0.05, with τ member-0-
 (plain ETS minus the ablation's member-0-free random-100 trimmed bag, never the contaminated
 `none100:trimmed`).
 
-**Family choice is wildly unstable**: median **5 distinct families** per series across 100
-bootstrap members (mean 5.37, max 14); only **24 of 1428** series (1.7%) have all 100 members
-agreeing.
+**Members routinely disagree**: median **5 distinct families** per series across 100 bootstrap
+members (mean 5.37, max 14); only **24 of 1428** series (1.7%) have all 100 members agreeing —
+which is what a resampling scheme that perturbs the data is supposed to produce.
 
 **Primary test: ρ = +0.0995, p = 1.65e-04.** Every secondary test agrees, all with the predicted
 sign:
@@ -84,33 +94,46 @@ The quartile view is the legible one, and it is monotone where the pilot's was n
 
 | quartile | mean families | mean τ_bag | mean τ_ma |
 |---|---|---|---|
-| Q1 stable | 2.6 | **−0.100** | +0.006 |
+| Q1 most agreement | 2.6 | **−0.100** | +0.006 |
 | Q2 | 4.5 | +0.483 | +0.426 |
 | Q3 | 6.0 | +0.431 | +0.699 |
-| Q4 unstable | 8.4 | **+1.184** | +1.193 |
+| Q4 least agreement | 8.4 | **+1.184** | +1.193 |
 
-**Bagging's entire average gain is concentrated in the unstable half.** On the most-stable quartile
-(≤3 families, n = 347) it is **−0.104 pp, 95% CI [−0.390, +0.129]** — bagging does not pay there at
-all. The M7 pilot's original prediction (τ ≈ 0 where all members agree) was untestable at n = 1;
-at n = 24 it holds directionally — mean τ_bag −0.026 pp, Wilcoxon p = 0.944, indistinguishable
-from zero — though that subgroup is far too small to separate from the rest (Mann-Whitney p = 0.40).
+**Bagging's entire average gain is concentrated in the half where members disagree.** On the
+most-agreeing quartile (≤3 families, n = 347) it is **−0.104 pp, 95% CI [−0.390, +0.129]** —
+bagging does not pay there at all. The M7 pilot's original prediction (τ ≈ 0 where all members
+agree) was untestable at n = 1; at n = 24 it holds directionally — mean τ_bag −0.026 pp,
+Wilcoxon p = 0.944, indistinguishable from zero — though that subgroup is far too small to
+separate from the rest (Mann-Whitney p = 0.40).
 The ≤3-family quartile is the better-powered form of the same statement.
 
-**Two caveats, stated plainly.** First, the effect is *real but weak as a per-series predictor*:
-ρ ≈ 0.10 explains ~1% of the variance in τ_bag. The mechanism is established; it is not a
-forecast of which series will benefit. Second, measuring family instability costs 100 ETS fits per
-series — the very cost bagging was being questioned for — so this is a **mechanistic explanation,
-not an operational saving**. Whether a cheap pre-forecast proxy for instability exists is a
-separate question, and one that should be pre-registered rather than mined from this data (see
-Finding 3, where single-sample likelihood ambiguity already failed at that job).
+**Three caveats, stated plainly, because they bound this finding hard.**
+
+*It is weak.* ρ ≈ 0.10 explains ~1% of the variance in τ_bag. This is an association, not a
+forecast of which series will benefit.
+
+*Its direction is close to mechanical.* If every member selects the same family on near-identical
+data, their forecasts are near-identical, so averaging them changes little and τ_bag ≈ 0 almost by
+construction. The sign was never in doubt; only the magnitude (−0.100 pp vs +1.184 pp across
+quartiles) carries information.
+
+*It never ran the check that would make it a mechanism.* Bagging can only help when the member
+forecasts differ — if all 100 are nearly identical, their average is nearly plain ETS. Members that
+pick different families naturally produce forecasts that differ more, so family count and forecast
+spread move together. This analysis measured only the family count, never the spread, so it cannot
+tell whether the choice of model form is a mechanism in its own right or just a visible symptom of
+forecasts being spread apart. **Read Finding 2 as an association, not as a demonstrated cause.**
+
+Measuring the disagreement also costs 100 ETS fits per series — the very cost bagging was being
+questioned for — so nothing here is an operational saving either.
 
 ## Finding 3 — Likelihood ambiguity does not predict where bagging helps (negative)
 
 Δ AICc₁₂ on the original series, Akaike-weight entropy, and effective model count all fail as
 pre-forecast routing proxies: ρ = −0.026 (p = 0.32) against τ_bag; quartiles non-monotone. There is
 no cheap "only bag the ambiguous series" rule from single-sample likelihood ambiguity. Consistent
-with the mechanism being *selection instability under resampling* rather than likelihood
-uncertainty — but see Finding 2 for why that remains unproven.
+with what matters being the variation the *resampling* induces rather than ambiguity visible in a
+single sample — but see Finding 2's caveats for why even that remains undemonstrated.
 
 Note `aicc_weighted` (13.898) is much worse than `top5_mean`: Akaike weights are near-degenerate,
 so weighting collapses toward plain ETS. **Equal weights over the top few beat likelihood weights.**
@@ -162,29 +185,16 @@ stands with a corrected margin.
 1. The honest headline is now one level below M6's: not "a 25-member trimmed bag suffices" but
    **"~15 ETS fits suffice"** — and the bag's remaining advantage over that is unmeasurable.
 2. Two engine findings now exist, not one, and they point in opposite directions on accuracy.
-3. **What bagging is doing in this pipeline is averaging over model-form uncertainty.** The two
-   halves now agree: a direct family average substitutes for the bag (Finding 1), and the bag's
-   gain appears exactly where the family choice is unstable and vanishes where it is not
-   (Finding 2). The remaining honest limits are that the mechanism is a weak per-series predictor
-   (~1% of variance) and that measuring it is not cheaper than the bag it explains.
+3. **The substitution result is the one to carry forward.** A direct top-*k* family average stands
+   in for the whole bagging apparatus (Finding 1) — that is measured, robust across k, and
+   cross-fitted. The supporting story, that bagging is averaging over model-form uncertainty, is
+   consistent with Finding 2 but not demonstrated by it: the association is weak (~1% of variance),
+   its direction is close to mechanical, and it was never separated from the simpler account that
+   averaging helps whenever member forecasts are spread apart. Treat it as a plausible reading,
+   not a result.
 
 ## Open
 
-- [ ] **A cheap way to predict family instability, decided in advance.** Finding 2 says bagging
-      only pays on series whose ETS family choice is unstable, which sounds like a rule: skip
-      bagging on the stable ~24% and lose nothing. It is not usable as it stands, because
-      measuring instability takes 100 ETS fits per series — the same cost as the 100-member bag
-      it would let you skip. You pay bagging's full price to learn you didn't need to bag.
-      What would make it a real rule is some quantity computable from the original series at
-      ~0–1 fits that predicts instability. Two warnings for whoever tries. The obvious candidate
-      has already failed: single-sample likelihood ambiguity (ΔAICc₁₂, Akaike-weight entropy) gave
-      ρ = −0.026, p = 0.32 in Finding 3. And with a true effect near ρ ≈ 0.10, testing ~10
-      candidate features at α = 0.05 turns up a spurious winner about once by chance — the exact
-      mistake this project is documenting in the 2018 paper. So fix the candidate list and the
-      multiple-testing correction in writing *before* looking. Cheapest place to start, at **zero
-      new fits**: the per-member family labels for all 1428 series are in
-      `results/m7_entropy_full/series/*.json`, so "do the first 5/10/20 members rank series the
-      same way as all 100?" is answerable from disk today.
 - [ ] Tier 1 threads T2–T8 (probabilistic calibration, conditional/heterogeneous, aggregation law)
       remain unrun; all are cache-only.
 - [ ] Persist `FittedETS.method` / `sigma2` in stage A so this never needs a refit again.

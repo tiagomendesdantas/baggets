@@ -1,4 +1,16 @@
-"""Does bagging's per-series gain track ETS family instability across members?
+"""Does bagging's per-series gain track how much members disagree about model form?
+
+NOTE ON THE FILENAME. "instability" here means only that bootstrap members select
+different ETS families, which is BY DESIGN -- BLD.MBB generates different series
+and AutoETS re-selects on each. It is not a defect. Do not confuse it with the
+optimizer-driven family flipping in M7 Finding 4, which IS a defect and which
+this project also calls instability. The filename predates that distinction.
+
+Read the result as an association, not a mechanism: bagging can only help when
+member forecasts differ, and members picking different families naturally produce
+forecasts that differ more, so family count and forecast spread move together.
+Only the family count is measured here, so this cannot separate "model form is a
+mechanism" from "forecasts were simply spread apart". See Finding 2's caveats.
 
 M7's mechanism test at n=300 gave rho=+0.113, p=0.051 -- the right direction
 with no significance. This is the pre-registered analysis for the full 1428
