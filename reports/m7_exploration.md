@@ -170,8 +170,21 @@ stands with a corrected margin.
 
 ## Open
 
-- [ ] A *cheap pre-forecast proxy* for family instability, pre-registered before it is tested —
-      instability itself costs 100 fits to measure, so it explains the bag without replacing it.
+- [ ] **A cheap way to predict family instability, decided in advance.** Finding 2 says bagging
+      only pays on series whose ETS family choice is unstable, which sounds like a rule: skip
+      bagging on the stable ~24% and lose nothing. It is not usable as it stands, because
+      measuring instability takes 100 ETS fits per series — the same cost as the 100-member bag
+      it would let you skip. You pay bagging's full price to learn you didn't need to bag.
+      What would make it a real rule is some quantity computable from the original series at
+      ~0–1 fits that predicts instability. Two warnings for whoever tries. The obvious candidate
+      has already failed: single-sample likelihood ambiguity (ΔAICc₁₂, Akaike-weight entropy) gave
+      ρ = −0.026, p = 0.32 in Finding 3. And with a true effect near ρ ≈ 0.10, testing ~10
+      candidate features at α = 0.05 turns up a spurious winner about once by chance — the exact
+      mistake this project is documenting in the 2018 paper. So fix the candidate list and the
+      multiple-testing correction in writing *before* looking. Cheapest place to start, at **zero
+      new fits**: the per-member family labels for all 1428 series are in
+      `results/m7_entropy_full/series/*.json`, so "do the first 5/10/20 members rank series the
+      same way as all 100?" is answerable from disk today.
 - [ ] Tier 1 threads T2–T8 (probabilistic calibration, conditional/heterogeneous, aggregation law)
       remain unrun; all are cache-only.
 - [ ] Persist `FittedETS.method` / `sigma2` in stage A so this never needs a refit again.
