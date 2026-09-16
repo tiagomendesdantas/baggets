@@ -77,9 +77,9 @@ yield training windows — the same discipline `ETSEngine` applies to a failed f
 
 Training is instrumentable: pass `monitor_factory=` and each epoch is handed to
 your monitor. The interface is duck-typed and baggets takes no dependency on any
-particular one; [torch-training-probes](https://github.com/tiagomendesdantas/torch-training-probes)
-satisfies it and finds, on a real M3 series, a 60%-dead ReLU layer and validation
-loss bottoming at epoch 56 of 400.
+particular one; a separate probe library (dead-ReLU fraction per layer, gradient
+norm by depth and through time, validation divergence) satisfies it and finds, on a
+real M3 series, a 60%-dead ReLU layer and validation loss bottoming at epoch 56 of 400.
 
 ```bash
 uv sync --extra torch
