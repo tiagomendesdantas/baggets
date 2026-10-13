@@ -1,0 +1,38 @@
+cff-version: 1.2.0
+message: >-
+  If you use this software, please cite the paper that introduced the method
+  (preferred-citation below).
+title: baggets
+abstract: >-
+  Python reimplementation of Bagged.Cluster.ETS (Dantas and Cyrino Oliveira,
+  2018), with pluggable ensemble-selection strategies and base learners.
+type: software
+version: 0.1.0
+license: MIT
+repository-code: "https://github.com/tiagomendesdantas/baggets"
+authors:
+  - family-names: Dantas
+    given-names: Tiago Mendes
+keywords:
+  - time series forecasting
+  - bagging
+  - bootstrap
+  - exponential smoothing
+  - ensembles
+preferred-citation:
+  type: article
+  title: >-
+    Improving time series forecasting: An approach combining bootstrap
+    aggregation, clusters and exponential smoothing
+  authors:
+    - family-names: Dantas
+      given-names: Tiago Mendes
+    - family-names: Cyrino Oliveira
+      given-names: Fernando Luiz
+  journal: International Journal of Forecasting
+  volume: 34
+  issue: 4
+  start: 748
+  end: 761
+  year: 2018
+  doi: 10.1016/j.ijforecast.2018.05.006
