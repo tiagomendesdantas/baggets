@@ -1,0 +1,4 @@
+"sid","n_train","B","n_members","wall_seconds","cpu_seconds"
+"monthly_N1603",51,1000,99,224.256,220.991
+"monthly_N2244",116,1000,99,262.393,258.918
+"monthly_N1908",126,1000,101,252.246,248.722
