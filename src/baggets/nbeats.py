@@ -271,10 +271,13 @@ class NBeatsEngine:
                  monitor_factory: Any = None, **kwargs):
         """``monitor_factory(module) -> monitor`` instruments the training loop.
 
-        Duck-typed on purpose: the monitor only needs an ``epoch()`` context
-        manager yielding an object with ``before_backward()`` and ``record()``.
-        ``torch-training-probes`` satisfies it, and baggets does not depend on
-        it — anything with that shape works, including a two-line stub.
+        Duck-typed on purpose, so baggets depends on no monitoring library.
+        The monitor needs an ``epoch()`` context manager, entered once per
+        epoch, yielding a handle with ``watch(x) -> x`` and
+        ``before_backward()`` (called per batch) and
+        ``record(train_loss=..., val_loss=...)`` (called once per epoch); and a
+        ``detach()`` method, called when training ends.
+        ``experiments/probe_nbeats_training.py`` has a complete example.
         Monitors are kept on the fitted object under ``monitors[h]``.
         """
         self.season_length = int(season_length)

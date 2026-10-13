@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from contextlib import contextmanager
 
 import numpy as np
 import pytest
@@ -92,7 +93,7 @@ class TestFallback:
 
 
 class TestTrainingHistory:
-    """The curves the training probes (project 2) read."""
+    """The curves that diagnostics and plots read from ``fitted.history``."""
 
     def test_history_carries_the_curves_and_split(self, seasonal_series):
         engine = NBeatsEngine(12, NBeatsConfig(**FAST))
@@ -111,6 +112,45 @@ class TestTrainingHistory:
         fitted = engine.fit(y)
         engine.predict(fitted, 18)
         assert fitted.history[18]["lookback"] < 7 * 18
+
+
+class TestMonitorHook:
+    """``monitor_factory`` is duck-typed; this pins the calls its docstring promises."""
+
+    def test_monitor_is_called_per_epoch_and_batch_then_detached(self, seasonal_series):
+        calls = {"epochs": 0, "watched": 0, "backward": 0, "records": 0, "detached": 0}
+
+        class Stub:
+            def __init__(self, module):
+                self.module = module
+
+            @contextmanager
+            def epoch(self):
+                calls["epochs"] += 1
+                yield self
+
+            def watch(self, x):
+                calls["watched"] += 1
+                return x
+
+            def before_backward(self):
+                calls["backward"] += 1
+
+            def record(self, train_loss=None, val_loss=None):
+                assert train_loss is not None and val_loss is not None
+                calls["records"] += 1
+
+            def detach(self):
+                calls["detached"] += 1
+
+        engine = NBeatsEngine(12, NBeatsConfig(**FAST), monitor_factory=Stub)
+        fitted = engine.fit(seasonal_series)
+        engine.predict(fitted, 18)
+        n_epochs = len(fitted.history[18]["train_curve"])
+        assert calls["epochs"] == calls["records"] == n_epochs
+        assert calls["watched"] == calls["backward"] >= n_epochs
+        assert calls["detached"] == 1
+        assert isinstance(fitted.monitors[18], Stub)
 
 
 class TestPlugsIntoBagging:
