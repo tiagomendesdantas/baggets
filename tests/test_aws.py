@@ -75,6 +75,9 @@ class TestRoundTrip:
         np.testing.assert_array_equal(back["errors"], b)
 
     def test_exists_is_false_before_and_true_after(self, store):
+        # exists() maps botocore's ClientError to False, so this one test needs
+        # the [aws] extra; the rest of the file runs on the stub alone.
+        pytest.importorskip("botocore", reason="S3 exists() needs the [aws] extra")
         assert not store.exists("x.npz")
         store.put_bytes("x.npz", b"data")
         assert store.exists("x.npz")
