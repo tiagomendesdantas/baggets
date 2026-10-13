@@ -19,7 +19,7 @@ of the ensemble variance, which plain bagging ignores. The final forecast is the
 
 ## Install
 
-Python 3.11 or newer; tested on 3.12. baggets is not on PyPI; install it from GitHub:
+Python 3.11 or newer; CI tests 3.11 and 3.12. baggets is not on PyPI; install it from GitHub:
 
 ```bash
 pip install "git+https://github.com/tiagomendesdantas/baggets"
@@ -124,12 +124,14 @@ The gates are frozen in [tests/fixtures/TOLERANCES.md](tests/fixtures/TOLERANCES
 | Moving block bootstrap draws | KS test p > 0.01 on per-draw sd and pooled values | 2 of the fixture series | CI (`tests/test_r_fixtures.py`) |
 | PAM clustering against `cluster::pam` | identical partitions for k = 2, 5, 20, 50; silhouette widths within 1e-9; same best k | one fixed distance matrix | CI (`tests/test_pam_vs_r.py`) |
 | AutoETS against `forecast::ets` | same model form on ≥ 60% of series; scaled forecast distance median ≤ 0.10, max ≤ 1.5 | 30 M3 monthly series | local only: needs the M3 export, skipped without it (`tests/test_engine.py`) |
-| The whole pipeline against the original `baggedClusterETS.R` (seed 42, B = 1,000) | R's test sMAPE inside the range of 10 Python seeds (one miss allowed); per-series difference within max(1.5, 3 × seed sd) and mean difference within ± 0.5 sMAPE points | 8 fixture series with k = 5, 2 of them also with automatic k | by hand (`experiments/tier4_compare.py`) |
+| The whole pipeline against the original `baggedClusterETS.R` (seed 42, B = 1,000) | R's test sMAPE inside the range of 10 Python seeds (one miss allowed); per-series difference within max(1.5, 3 × seed sd) and mean difference within ± 0.5 sMAPE points | 8 fixture series with k = 5, 2 of them also with automatic k | by hand (`experiments/tier4_compare.py`); last run 26 Aug 2026, [result](reports/tier4_r_comparison.md) |
 
 The two ETS engines search the same 30-model space with different optimizers, so they do not
 always pick the same model, and the ETS check is statistical rather than exact. For the same
 reason the whole-pipeline gates apply only to series where plain ETS from the two engines agrees
-within 0.5 sMAPE points; on the others, the gap is compared with the engine gap instead.
+within 0.5 sMAPE points; on the others, the gap is compared with the engine gap instead. In the
+last run, 4 of the 10 cases met that condition and all of its gates passed (mean difference +0.014
+sMAPE points); the other 6 passed the engine-gap check.
 
 **Speed.** On one core of an Apple M2, with B = 1,000, k = 5 and 100 members, baggets took 69 to
 183 seconds per series and the original R code 224 to 262 seconds, on the same three series: 1.4
@@ -209,7 +211,7 @@ uv run pytest -n auto -rs   # what CI runs; R is not needed
 uv sync --all-extras        # add torch, aws and the experiment tools
 ```
 
-CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs the tests without PyTorch, and again
+CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs the tests without PyTorch on Python 3.11 and 3.12, and again
 with the `torch` and `aws` extras in a separate job that is allowed to fail. Tests that need the
 M3 export or R skip with a reason. The M3 data comes from R's `Mcomp` package
 (`Rscript validation_r/export_m3_mcomp.R`, written to `data/m3/`).
