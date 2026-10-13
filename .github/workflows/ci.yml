@@ -19,8 +19,14 @@ concurrency:
 
 jobs:
   core:
-    name: Tests (core, no PyTorch)
+    name: Tests (core, no PyTorch, Python ${{ matrix.python }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12"]
+    env:
+      UV_PYTHON: ${{ matrix.python }}   # overrides .python-version
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
