@@ -6,7 +6,7 @@
 > **Note on a reading that changed.** An earlier pass over the first 55 series showed the
 > two engines tied (p = 0.68). At n = 300 the ordering reversed and the difference became
 > significant. The tie was a small-sample artifact, and it is recorded here rather than
-> quietly overwritten — a result that moves when the sample grows is worth knowing about.
+> overwritten — a result that moves when the sample grows is worth knowing about.
 
 ## The question
 
@@ -80,7 +80,7 @@ points, so after a lookback window a member trains on **tens of windows** —
 N1402 gives 8. N-BEATS's published results come from *cross-learning*: one model
 over 100,000 series. Per series is a different regime, and the honest reading is
 that a deep network cannot show what it is for on this much data. That the
-constrained variant still lands within 0.7 sMAPE of automatic ETS on eight
+constrained variant still lands within 0.7 sMAPE of automatic ETS on so few
 training windows is arguably the more surprising half of the result.
 
 Two things fall out of that and are worth stating separately from the score:
@@ -90,11 +90,17 @@ Two things fall out of that and are worth stating separately from the score:
   mean sMAPE) while cluster selection adds nothing at B=100 — consistent with
   [M6](m6_findings.md). Bagging buys 0.79 sMAPE; swapping the base learner for a
   deep network costs 0.69. The ensemble is where the accuracy lives.
-- **The neural arm is where the training pathologies are.** Instrumenting one
-  member with [torch-training-probes](https://github.com/tiagomendesdantas/torch-training-probes)
-  on N1402 found a layer with 60% dead ReLU units and validation loss bottoming
-  at **epoch 56 of 400**. A model that overfits by epoch 56 on 8 windows is not
-  going to be rescued by tuning.
+- **The neural arm is where the training pathologies are.** A diagnostic run on
+  N1402 (one generic N-BEATS trained on the series itself, 400 epochs with early
+  stopping turned off, seed 7) ends with 60% of the units in its worst ReLU layer
+  dead, and its validation loss bottoms at **epoch 56 of 400**. N1402 has 50
+  points, which gives 8 windows: 6 to train on and 2 to validate. A model that
+  overfits by epoch 56 on 6 training windows is not going to be rescued by
+  tuning. This run is separate from the 300-series arms, which stop early within
+  150 epochs. `experiments/probe_nbeats_training.py` reproduces both numbers
+  through the engine's `monitor_factory=` hook and defines what it counts: a
+  unit is dead in an epoch if its output was never positive for any input seen
+  in that epoch.
 
 ## What would actually test the idea
 
@@ -104,11 +110,33 @@ a different engine, and it is the experiment this result points at.
 
 ## Reproduce
 
+Needs the `torch` extra and the M3 export (R with the `Mcomp` package). All
+three arms share the same 300 series (`--limit 300`: the first 300 M3 monthly
+series by id), B = 100 and stage-A seed 42; both N-BEATS arms train each member
+for at most 150 epochs with early stopping.
+
 ```bash
+uv sync --extra torch
+Rscript validation_r/export_m3_mcomp.R
+
+# stage A, one cache per arm
 uv run python experiments/run_m3.py precompute --group monthly --limit 300 \
     --n-bootstraps 100 --engine ets --n-jobs 6
 uv run python experiments/run_m3.py precompute --group monthly --limit 300 \
     --n-bootstraps 100 --engine nbeats-i --epochs 150 --n-jobs 6
+uv run python experiments/run_m3.py precompute --group monthly --limit 300 \
+    --n-bootstraps 100 --engine nbeats --epochs 150 --n-jobs 6
+
+# result table, Friedman + Hochberg with ETS as control, "beats ETS on"
+uv run python experiments/compare_engines.py --engines ets nbeats-i nbeats \
+    --n-bootstraps 100 --strategy none100:mean
+# pairwise Wilcoxon, ETS vs interpretable N-BEATS (p = 0.045 / 0.011)
 uv run python experiments/compare_engines.py --engines ets nbeats-i \
     --n-bootstraps 100 --strategy none100:mean
+# bagging vs a single ETS fit vs cluster selection, ETS arm only
+uv run python experiments/run_m3.py evaluate --group monthly --limit 300 \
+    --n-bootstraps 100 --strategies none100:mean,cluster-auto,original
+
+# training diagnostics for one member on N1402 (dead ReLU units, validation minimum)
+uv run --extra torch python experiments/probe_nbeats_training.py
 ```
